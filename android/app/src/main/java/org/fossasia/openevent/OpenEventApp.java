@@ -11,16 +11,16 @@ import android.os.Looper;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
+import com.facebook.FacebookSdk;
 import com.squareup.otto.Bus;
 import com.squareup.otto.Subscribe;
 
-import org.fossasia.openevent.receivers.NetworkConnectivityChangeReceiver;
 import org.fossasia.openevent.api.Urls;
 import org.fossasia.openevent.dbutils.DbSingleton;
 import org.fossasia.openevent.events.ConnectionCheckEvent;
-import org.fossasia.openevent.events.DataDownloadEvent;
 import org.fossasia.openevent.events.ShowNetworkDialogEvent;
 import org.fossasia.openevent.modules.MapModuleFactory;
+import org.fossasia.openevent.receivers.NetworkConnectivityChangeReceiver;
 import org.fossasia.openevent.utils.ConstantStrings;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Locale;
 
+import io.branch.referral.Branch;
 import timber.log.Timber;
 
 /**
@@ -72,6 +73,9 @@ public class OpenEventApp extends Application {
         super.onCreate();
         handler = new Handler(Looper.getMainLooper());
         OpenEventApp.context = getApplicationContext();
+
+        Branch.getAutoInstance(this);
+        FacebookSdk.sdkInitialize(this);
 
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getAppContext());
         sDefSystemLanguage = Locale.getDefault().getDisplayLanguage();
@@ -120,7 +124,6 @@ public class OpenEventApp extends Application {
     @Subscribe
     public void onConnectionChangeReact(ConnectionCheckEvent event) {
         if (event.connState()) {
-            postEventOnUIThread(new DataDownloadEvent());
             Timber.d("[NetNotif] %s", "Connected to Internet");
         } else {
             Timber.d("[NetNotif] %s", "Not connected to Internet");

@@ -1,5 +1,6 @@
 package org.fossasia.openevent.fragments;
 
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.support.design.widget.AppBarLayout;
 import android.support.design.widget.Snackbar;
@@ -25,12 +26,20 @@ import com.squareup.otto.Subscribe;
 import org.fossasia.openevent.OpenEventApp;
 import org.fossasia.openevent.R;
 import org.fossasia.openevent.adapters.LocationsListAdapter;
+import org.fossasia.openevent.data.Microlocation;
 import org.fossasia.openevent.dbutils.DataDownloadManager;
 import org.fossasia.openevent.dbutils.DbSingleton;
 import org.fossasia.openevent.events.MicrolocationDownloadEvent;
 import org.fossasia.openevent.events.RefreshUiEvent;
+import org.fossasia.openevent.views.stickyheadersrecyclerview.StickyRecyclerHeadersDecoration;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import butterknife.BindView;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.functions.Consumer;
 
 /**
  * User: MananWason
@@ -43,7 +52,10 @@ public class LocationsFragment extends BaseFragment implements SearchView.OnQuer
     @BindView(R.id.list_locations) RecyclerView locationsRecyclerView;
     @BindView(R.id.txt_no_microlocations) TextView noMicrolocationsView;
 
+    private List<Microlocation> mLocations = new ArrayList<>();
     private LocationsListAdapter locationsListAdapter;
+
+    private GridLayoutManager gridLayoutManager;
 
     private String searchText = "";
 
@@ -53,6 +65,8 @@ public class LocationsFragment extends BaseFragment implements SearchView.OnQuer
     private AppBarLayout.LayoutParams layoutParams;
     private int SCROLL_OFF = 0;
 
+    private CompositeDisposable compositeDisposable;
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         setHasOptionsMenu(true);
@@ -60,6 +74,7 @@ public class LocationsFragment extends BaseFragment implements SearchView.OnQuer
         View view = super.onCreateView(inflater, container, savedInstanceState);
 
         OpenEventApp.getEventBus().register(this);
+        compositeDisposable = new CompositeDisposable();
 
         final DbSingleton dbSingleton = DbSingleton.getInstance();
         swipeRefreshLayout.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
@@ -76,10 +91,19 @@ public class LocationsFragment extends BaseFragment implements SearchView.OnQuer
         int spanCount = (int) (width/200.00);
 
         locationsRecyclerView.setHasFixedSize(true);
-        final GridLayoutManager gridLayoutManager = new GridLayoutManager(getActivity(),spanCount);
+        gridLayoutManager = new GridLayoutManager(getActivity(), spanCount);
         locationsRecyclerView.setLayoutManager(gridLayoutManager);
-        locationsListAdapter = new LocationsListAdapter(getContext(), dbSingleton.getMicrolocationsList());
+        locationsListAdapter = new LocationsListAdapter(getContext(), mLocations);
         locationsRecyclerView.setAdapter(locationsListAdapter);
+
+        final StickyRecyclerHeadersDecoration headersDecoration = new StickyRecyclerHeadersDecoration(locationsListAdapter);
+        locationsRecyclerView.addItemDecoration(headersDecoration);
+        locationsListAdapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override public void onChanged() {
+                headersDecoration.invalidateHeaders();
+            }
+        });
+
         locationsRecyclerView.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
             @Override
             public boolean onPreDraw() {
@@ -97,13 +121,7 @@ public class LocationsFragment extends BaseFragment implements SearchView.OnQuer
         if (savedInstanceState != null && savedInstanceState.getString(SEARCH) != null) {
             searchText = savedInstanceState.getString(SEARCH);
         }
-        if (locationsListAdapter.getItemCount() != 0) {
-            noMicrolocationsView.setVisibility(View.GONE);
-            locationsRecyclerView.setVisibility(View.VISIBLE);
-        } else {
-            noMicrolocationsView.setVisibility(View.VISIBLE);
-            locationsRecyclerView.setVisibility(View.GONE);
-        }
+
         //scrollup shows actionbar
         locationsRecyclerView.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
@@ -117,7 +135,31 @@ public class LocationsFragment extends BaseFragment implements SearchView.OnQuer
             }
         });
 
+        compositeDisposable.add(dbSingleton.getMicrolocationsListObservable()
+                .subscribe(new Consumer<ArrayList<Microlocation>>() {
+                    @Override
+                    public void accept(@NonNull ArrayList<Microlocation> microlocations) throws Exception {
+                        mLocations.clear();
+                        mLocations.addAll(microlocations);
+
+                        locationsListAdapter.notifyDataSetChanged();
+                        handleVisibility();
+                    }
+                }));
+
+        handleVisibility();
+
         return view;
+    }
+
+    private void handleVisibility() {
+        if (locationsListAdapter.getItemCount() != 0) {
+            noMicrolocationsView.setVisibility(View.GONE);
+            locationsRecyclerView.setVisibility(View.VISIBLE);
+        } else {
+            noMicrolocationsView.setVisibility(View.VISIBLE);
+            locationsRecyclerView.setVisibility(View.GONE);
+        }
     }
 
     @Override
@@ -165,6 +207,15 @@ public class LocationsFragment extends BaseFragment implements SearchView.OnQuer
     }
 
     @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        DisplayMetrics displayMetrics = getContext().getResources().getDisplayMetrics();
+        float width = displayMetrics.widthPixels / displayMetrics.density;
+        int spanCount = (int) (width / 200.00);
+        gridLayoutManager.setSpanCount(spanCount);
+    }
+
+    @Override
     public boolean onQueryTextChange(String query) {
         if (!TextUtils.isEmpty(query)) {
             locationsListAdapter.getFilter().filter(query);
@@ -193,26 +244,28 @@ public class LocationsFragment extends BaseFragment implements SearchView.OnQuer
     public void onDestroyView() {
         super.onDestroyView();
         OpenEventApp.getEventBus().unregister(this);
+        if(compositeDisposable != null && !compositeDisposable.isDisposed())
+            compositeDisposable.dispose();
         layoutParams.setScrollFlags(AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL);
         toolbar.setLayoutParams(layoutParams);
     }
 
     @Subscribe
     public void LocationsDownloadDone(MicrolocationDownloadEvent event) {
+        if(swipeRefreshLayout == null)
+            return;
 
         swipeRefreshLayout.setRefreshing(false);
         if (event.isState()) {
             locationsListAdapter.refresh();
 
         } else {
-            if (getActivity() != null) {
-                Snackbar.make(getView(), getActivity().getString(R.string.refresh_failed), Snackbar.LENGTH_LONG).setAction(R.string.retry_download, new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
-                        refresh();
-                    }
-                }).show();
-            }
+            Snackbar.make(swipeRefreshLayout, getActivity().getString(R.string.refresh_failed), Snackbar.LENGTH_LONG).setAction(R.string.retry_download, new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    refresh();
+                }
+            }).show();
         }
     }
 

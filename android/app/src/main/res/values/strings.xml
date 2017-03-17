@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">Open Event</string>
+    <string name="app_name" translatable="false">FOSSASIA 2017</string>
 
     <string name="title_section_tracks">Tracks</string>
     <string name="title_section_speakerlist">Speakers</string>
@@ -8,11 +8,12 @@
     <string name="session_bookmark_status">This image shows the session bookmark status.</string>
     <string name="session_speaker_icon">This is the speaker icon.</string>
     <string name="session_share_icon">This is the share icon.</string>
-    <string name="session_calender_icon">This is a calender icon.</string>
+    <string name="session_calender_icon">This is a calendar icon.</string>
     <string name="session_clock_icon">This is a clock icon.</string>
     <string name="session_location_icon">This is a location icon.</string>
 
     <!-- Main menu_speakers -->
+    <string name="menu_home">Home</string>
     <string name="menu_tracks">Tracks</string>
     <string name="menu_bookmarks">Bookmarks</string>
     <string name="menu_speakers">Speakers</string>
@@ -37,7 +38,7 @@
     <string name="settings_mode_download">Download updates only on wifi</string>
     <string name="summary_mode_download">If switched on app will not use Mobile Data to update schedule</string>
     <string name="download_mode_key">internet_mode</string>
-
+    <string name= "notification_interval_title">Interval</string>
 
     <string name="settings_mode_notification"> Notification Mode</string>
     <string name="default_mode_notification">10 mins</string>
@@ -91,7 +92,7 @@
     <string name="noBookmark">No bookmarked session yet !!</string>
 
     <!--About us text-->
-    <string name="about_text">Programmed by <a href="https://github.com/fossasia/open-event-android/graphs/contributors">FOSSASIA contributors</a>.
+    <string name="about_text">Developed by <a href="https://github.com/fossasia/open-event-android/graphs/contributors">FOSSASIA contributors</a>.
 \n
 \nLicensed under the GNU General Public License v3. Source available on <a href="https://github.com/fossasia/open-event-android">GitHub</a>.
 \n
@@ -179,5 +180,30 @@
     <string name="whatsapp_promo_msg_template">Hey, join me at the event! - %s</string>
     <string name="error_msg_retry">Please Retry Again</string>
     <string name="app_share_url" translatable="false">https://play.google.com/store/apps/details?id=%s</string>
+    <string name="share_app">Share App</string>
+    <string name="invite_via_facebook">Invite Via Facebook</string>
+    <string name="facebook_app_id">1786614831603417</string>
+    <string name="share_fb_preview_url">https://lh3.googleusercontent.com/ai5OksP-YP6DdCuqCxE-97Kz9lEFu7VtDVnhfXB__h6K0gx3Rrl0mWM9mXsfMb19pqw=w300-rw</string>
+    <string name="facebook">Facebook</string>
+    <string name="invite_title">FOSSASIA Summit 2017</string>
+    <string name="invite_content_description">Official FOSSASIA application for the annual summit 2017.  Download the current schedule and browse it offline.</string>
+
+    <!--Branch integration strings-->
+    <string name="branch_key_debug">key_test_gjCjmUMS5Dp6u7IukMSDujjhDwbPyjbB</string>
+    <string name="branch_key_live">key_live_pavjjGHL2Al0qWQzjRQFvcddwscRvkcp</string>
+
+    <!--Misc Strings-->
+    <string name="time_separator" translatable="false">\u0020-\u0020</string>
+    <string name="delimiter" translatable="false">,\u0020\u0020</string>
+
+    <!--About Screen-->
+    <string name="welcome_message">Welcome to FOSSASIA Summit 2017!</string>
+    <string name="event_open">EVENT OPEN</string>
+    <string name="event_venue">VENUE</string>
+    <string name="organiser_description">ORGANISERS DESCRIPTION</string>
+    <string name="read_more">Read More</string>
+    <string name="read_less">Read Less</string>
+    <string name="more_details">For more details check </string>
+    <string name="social_links">SOCIAL LINKS</string>
 
 </resources>

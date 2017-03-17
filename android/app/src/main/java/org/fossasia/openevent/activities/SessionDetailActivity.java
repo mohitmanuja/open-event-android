@@ -25,13 +25,15 @@ import android.text.method.LinkMovementMethod;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import org.fossasia.openevent.OpenEventApp;
 import org.fossasia.openevent.R;
-import org.fossasia.openevent.adapters.SpeakersListAdapter;
+import org.fossasia.openevent.adapters.SessionSpeakerListAdapter;
+import org.fossasia.openevent.data.Microlocation;
 import org.fossasia.openevent.data.Session;
 import org.fossasia.openevent.data.Speaker;
 import org.fossasia.openevent.dbutils.DbSingleton;
@@ -40,10 +42,14 @@ import org.fossasia.openevent.utils.ConstantStrings;
 import org.fossasia.openevent.utils.ISO8601Date;
 import org.fossasia.openevent.utils.WidgetUpdater;
 
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
 
 import butterknife.BindView;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.disposables.CompositeDisposable;
+import io.reactivex.functions.Consumer;
 import timber.log.Timber;
 
 import static android.text.Html.FROM_HTML_MODE_LEGACY;
@@ -55,7 +61,9 @@ import static android.text.Html.FROM_HTML_MODE_LEGACY;
 public class SessionDetailActivity extends BaseActivity implements AppBarLayout.OnOffsetChangedListener{
     private static final String TAG = "Session Detail";
 
-    private SpeakersListAdapter adapter;
+    private DbSingleton dbSingleton = DbSingleton.getInstance();
+
+    private SessionSpeakerListAdapter adapter;
 
     private Session session;
 
@@ -91,7 +99,11 @@ public class SessionDetailActivity extends BaseActivity implements AppBarLayout.
     @BindView(R.id.toolbar_layout)
     protected CollapsingToolbarLayout collapsingToolbarLayout;
     @BindView(R.id.header_title_session)
-    LinearLayout linearLayout;
+    protected LinearLayout linearLayout;
+    @BindView(R.id.content_frame_session)
+    protected FrameLayout mapFragment;
+    @BindView(R.id.nested_scrollview_session_detail)
+    protected NestedScrollView scrollView;
 
     private String trackName, title;
 
@@ -99,76 +111,93 @@ public class SessionDetailActivity extends BaseActivity implements AppBarLayout.
 
     private boolean isHideToolbarView = false;
 
+    private CompositeDisposable disposable;
+
     @Override
-    public void onCreate(Bundle savedInstanceState) {
+    public void onCreate(final Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-        DbSingleton dbSingleton = DbSingleton.getInstance();
+
+        final SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+
+        disposable = new CompositeDisposable();
+
         setSupportActionBar(toolbar);
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        int id;
+        if(getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+
+        final int id;
 
         title = getIntent().getStringExtra(ConstantStrings.SESSION);
         trackName = getIntent().getStringExtra(ConstantStrings.TRACK);
         id = getIntent().getIntExtra(ConstantStrings.ID, 0);
         Timber.tag(TAG).d(title);
 
-        collapsingToolbarLayout.setTitle(" ");
         appBarLayout.addOnOffsetChangedListener(this);
 
-        final List<Speaker> speakers = dbSingleton.getSpeakersbySessionName(title);
-        try {
-            session = dbSingleton.getSessionById(id);
-            sharedPreferences.edit().putInt(ConstantStrings.SESSION_MAP_ID, id).apply();
-        } catch (Exception e) {
-            session = dbSingleton.getSessionbySessionname(title);
-            sharedPreferences.edit().putInt(ConstantStrings.SESSION_MAP_ID, -1).apply();
-        }
+        final List<Speaker> speakers = new ArrayList<>();
+        adapter = new SessionSpeakerListAdapter(speakers, this);
 
-        String microlocationName = "Not decided yet";
-        if (dbSingleton.getMicrolocationById(session.getMicrolocation().getId()) != null){
-            // This function returns id=0 when microlocation is null in session JSON
-            microlocationName = dbSingleton.getMicrolocationById(session.getMicrolocation().getId()).getName();
-        }
-        text_room1.setText(microlocationName);
+        disposable.add(dbSingleton.getSpeakersbySessionNameObservable(title)
+                .subscribe(new Consumer<ArrayList<Speaker>>() {
+                    @Override
+                    public void accept(@NonNull ArrayList<Speaker> speakerList) {
+                        speakers.addAll(speakerList);
+                        adapter.notifyDataSetChanged();
+                    }
+                }));
+
+        disposable.add(dbSingleton.getSessionByIdObservable(id)
+                .subscribe(new Consumer<Session>() {
+                    @Override
+                    public void accept(@NonNull Session receivedSession) {
+                        // If successfully received Session
+                        session = receivedSession;
+                        sharedPreferences.edit().putInt(ConstantStrings.SESSION_MAP_ID, id).apply();
+
+                        updateSession();
+                    }
+                }, new Consumer<Throwable>() {
+                    @Override
+                    public void accept(Throwable throwable) {
+                        // If error occurs, we load by name
+                        dbSingleton.getSessionbySessionnameObservable(title)
+                                .subscribe(new Consumer<Session>() {
+                                    @Override
+                                    public void accept(@NonNull Session receivedSession) {
+                                        session = receivedSession;
+                                        sharedPreferences.edit().putInt(ConstantStrings.SESSION_MAP_ID, -1).apply();
+                                        updateSession();
+                                    }
+                                });
+                    }
+                }));
+
+        speakersRecyclerView.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+        speakersRecyclerView.setAdapter(adapter);
+        speakersRecyclerView.setItemAnimator(new DefaultItemAnimator());
+    }
+
+    private void updateSession() {
+        updateFloatingIcon();
+
+        disposable.add(dbSingleton.getMicrolocationByIdObservable(session.getMicrolocation().getId())
+                .subscribe(new Consumer<Microlocation>() {
+                    @Override
+                    public void accept(Microlocation microlocation) {
+                        text_room1.setText(microlocation.getName());
+                    }
+                }, new Consumer<Throwable>() {
+                    @Override
+                    public void accept(@NonNull Throwable throwable) throws Exception {
+                        text_room1.setText("Not decided yet");
+                    }
+                }));
 
         text_title.setText(title);
-        if (session.getSubtitle().equals("")) {
+        if (TextUtils.isEmpty(session.getSubtitle())) {
             text_subtitle.setVisibility(View.GONE);
         }
         text_subtitle.setText(session.getSubtitle());
         text_track.setText(trackName);
-
-        updateFloatingIcon(fabSessionBookmark);
-
-        fabSessionBookmark.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                final DbSingleton dbSingleton = DbSingleton.getInstance();
-                if (dbSingleton.isBookmarked(session.getId())) {
-                    Timber.tag(TAG).d("Bookmark Removed");
-                    dbSingleton.deleteBookmarks(session.getId());
-                  
-                    fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_outline_white_24dp);
-                    Snackbar.make(v, R.string.removed_bookmark, Snackbar.LENGTH_LONG)
-                            .setAction(R.string.undo, new View.OnClickListener() {
-                                @Override
-                                public void onClick(View v) {
-                                    dbSingleton.addBookmarks(session.getId());
-                                    fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_white_24dp);
-                                    WidgetUpdater.updateWidget(getApplicationContext());
-                                }
-                            });
-                } else {
-                    Timber.tag(TAG).d("Bookmarked");
-                    dbSingleton.addBookmarks(session.getId());
-                    fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_white_24dp);
-                    createNotification();
-                    Toast.makeText(SessionDetailActivity.this, R.string.added_bookmark, Toast.LENGTH_SHORT).show();
-                }
-                WidgetUpdater.updateWidget(getApplicationContext());
-            }
-        });
 
         String date = ISO8601Date.getTimeZoneDateString(
                 ISO8601Date.getDateObject(session.getStartTime())).split(",")[0] + ","
@@ -181,13 +210,11 @@ public class SessionDetailActivity extends BaseActivity implements AppBarLayout.
         if (TextUtils.isEmpty(startTime) && TextUtils.isEmpty(endTime)) {
             text_start_time.setText(R.string.time_not_specified);
             text_end_time.setVisibility(View.GONE);
-
         } else {
             text_start_time.setText(startTime.trim());
             text_end_time.setText(endTime.trim());
             text_date.setText(date.trim());
-            Timber.d(date+"\n"+endTime+"\n"+startTime);
-
+            Timber.d("%s\n%s\n%s", date, endTime, startTime);
         }
 
         summary.setMovementMethod(LinkMovementMethod.getInstance());
@@ -201,23 +228,50 @@ public class SessionDetailActivity extends BaseActivity implements AppBarLayout.
 
         }
         descrip.setText(result);
-
-        adapter = new SpeakersListAdapter(speakers, this);
-
-        speakersRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-        speakersRecyclerView.setAdapter(adapter);
-        speakersRecyclerView.setItemAnimator(new DefaultItemAnimator());
     }
 
-    private void updateFloatingIcon(FloatingActionButton fabSessionBookmark) {
-        DbSingleton dbSingleton = DbSingleton.getInstance();
-        if (dbSingleton.isBookmarked(session.getId())) {
-            Timber.tag(TAG).d("Bookmarked");
-            fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_white_24dp);
-        } else {
-            Timber.tag(TAG).d("Bookmark Removed");
-            fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_outline_white_24dp);
-        }
+    private void updateFloatingIcon() {
+        final Consumer<Boolean> bookmarkConsumer = new Consumer<Boolean>() {
+            @Override
+            public void accept(Boolean bookmarked) {
+                if(bookmarked) {
+                    Timber.tag(TAG).d("Bookmark Removed");
+                    disposable.add(dbSingleton.deleteBookmarksObservable(session.getId()).subscribe());
+
+                    fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_outline_white_24dp);
+                    Snackbar.make(speakersRecyclerView, R.string.removed_bookmark, Snackbar.LENGTH_SHORT).show();
+                } else {
+                    Timber.tag(TAG).d("Bookmarked");
+                    disposable.add(dbSingleton.addBookmarksObservable(session.getId()).subscribe());
+                    fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_white_24dp);
+                    createNotification();
+                    Snackbar.make(speakersRecyclerView, R.string.added_bookmark, Snackbar.LENGTH_SHORT).show();
+                }
+            }
+        };
+
+        disposable.add(dbSingleton.isBookmarkedObservable(session.getId())
+                .subscribe(new Consumer<Boolean>() {
+                    @Override
+                    public void accept(Boolean bookmarked) {
+                        if(bookmarked) {
+                            Timber.tag(TAG).d("Bookmarked");
+                            fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_white_24dp);
+                        } else {
+                            Timber.tag(TAG).d("Bookmark Removed");
+                            fabSessionBookmark.setImageResource(R.drawable.ic_bookmark_outline_white_24dp);
+                        }
+                    }
+                }));
+
+        fabSessionBookmark.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(final View view) {
+                disposable.add(dbSingleton.isBookmarkedObservable(session.getId())
+                        .subscribe(bookmarkConsumer));
+                WidgetUpdater.updateWidget(getApplicationContext());
+            }
+        });
     }
 
     @Override
@@ -226,15 +280,39 @@ public class SessionDetailActivity extends BaseActivity implements AppBarLayout.
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(disposable != null && !disposable.isDisposed())
+            disposable.dispose();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (fabSessionBookmark.getVisibility() == View.GONE) {
+            /** hide fragment again on back pressed and show session views **/
+            mapFragment.setVisibility(View.GONE);
+            fabSessionBookmark.setVisibility(View.VISIBLE);
+            if (scrollView.getVisibility() == View.GONE) {
+                scrollView.setVisibility(View.VISIBLE);
+            }
+            if (appBarLayout.getVisibility() == View.GONE) {
+                appBarLayout.setVisibility(View.VISIBLE);
+            }
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.action_map:
                 /** Hide all the views except the frame layout **/
-                NestedScrollView scrollView = (NestedScrollView) findViewById(R.id.nested_scrollview_session_detail);
                 scrollView.setVisibility(View.GONE);
-                AppBarLayout sessionDetailAppBar = (AppBarLayout) findViewById(R.id.app_bar_session_detail);
-                sessionDetailAppBar.setVisibility(View.GONE);
+                appBarLayout.setVisibility(View.GONE);
                 fabSessionBookmark.setVisibility(View.GONE);
+
+                mapFragment.setVisibility(View.VISIBLE);
 
                 FragmentManager fragmentManager = getSupportFragmentManager();
                 FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
@@ -283,7 +361,6 @@ public class SessionDetailActivity extends BaseActivity implements AppBarLayout.
         getMenuInflater().inflate(R.menu.menu_session_detail, menu);
         return super.onCreateOptionsMenu(menu);
     }
-
 
     public void createNotification() {
 
